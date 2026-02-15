@@ -5,6 +5,9 @@ return {
     ---@module 'oil'
     ---@type oil.SetupOpts
     opts = {},
+    keys = {
+      { '<leader>go', '<cmd>Oil<CR>', desc = 'Open Oil' },
+    },
     -- Optional dependencies
     dependencies = { { 'nvim-mini/mini.icons', opts = {} } },
     -- dependencies = { "nvim-tree/nvim-web-devicons" }, -- use if you prefer nvim-web-devicons
