@@ -215,6 +215,40 @@ vim.keymap.set('n', '<leader>tt', function()
   vim.cmd 'startinsert'
 end, { desc = 'Terminal' })
 
+-- Reopen any *running* terminal buffers that were closed (hidden) previously.
+vim.api.nvim_create_user_command('TermRestore', function()
+  local restored = 0
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' then
+      local ok, job_id = pcall(vim.api.nvim_buf_get_var, buf, 'terminal_job_id')
+      if ok and type(job_id) == 'number' then
+        local ok_wait, res = pcall(vim.fn.jobwait, { job_id }, 0)
+        if ok_wait and type(res) == 'table' and res[1] == -1 then
+          vim.cmd 'botright split'
+          vim.api.nvim_set_current_buf(buf)
+          restored = restored + 1
+        end
+      end
+    end
+  end
+  if restored == 0 then vim.notify('No running terminal buffers to restore', vim.log.levels.INFO) end
+end, { desc = 'Reopen running terminal buffers' })
+
+vim.keymap.set('n', '<leader>tr', '<cmd>TermRestore<CR>', { desc = '[T]erminal [R]estore' })
+
+-- Kill the current terminal job + wipe the terminal buffer.
+vim.api.nvim_create_user_command('TermKill', function()
+  if vim.bo.buftype ~= 'terminal' then
+    vim.notify('Not a terminal buffer', vim.log.levels.WARN)
+    return
+  end
+  local ok, job_id = pcall(vim.api.nvim_buf_get_var, 0, 'terminal_job_id')
+  if ok and type(job_id) == 'number' and job_id > 0 then pcall(vim.fn.jobstop, job_id) end
+  pcall(vim.api.nvim_buf_delete, 0, { force = true })
+end, { desc = 'Stop terminal job and wipe buffer' })
+
+vim.keymap.set('n', '<leader>tk', '<cmd>TermKill<CR>', { desc = '[T]erminal [K]ill' })
+
 -- TIP: Disable arrow keys in normal mode
 vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
 vim.keymap.set('n', '<right>', '<cmd>echo "Use l to move!!"<CR>')
