@@ -296,6 +296,43 @@ vim.keymap.set('x', '<leader>cp', function()
   vim.schedule(startinsert_in_copilot_term)
 end, { desc = 'Copilot CLI with range ref' })
 
+local commit_message_generation_in_progress = false
+vim.keymap.set('n', '<leader>cm', function()
+  if vim.fn.executable 'copilot' ~= 1 then
+    vim.notify('copilot CLI not found in $PATH', vim.log.levels.ERROR)
+    return
+  end
+  if commit_message_generation_in_progress then
+    vim.notify('Commit message generation already in progress', vim.log.levels.WARN)
+    return
+  end
+
+  local cmd =
+    [[git diff --staged | copilot --model gpt-4.1 -p "Write a concise Commit message for these staged changes. List all the changes. Output only the subject line." --silent --allow-all]]
+  commit_message_generation_in_progress = true
+  vim.notify('Generating commit message with Copilot CLI...', vim.log.levels.INFO)
+
+  vim.system({ 'sh', '-c', cmd }, { text = true }, function(result)
+    vim.schedule(function()
+      commit_message_generation_in_progress = false
+      if result.code ~= 0 then
+        vim.notify('Failed to generate commit message with Copilot CLI', vim.log.levels.ERROR)
+        return
+      end
+
+      local message = vim.trim(result.stdout or '')
+      if message == '' then
+        vim.notify('Copilot CLI returned an empty commit message', vim.log.levels.WARN)
+        return
+      end
+
+      vim.fn.setreg('+', message)
+      vim.fn.setreg('"', message)
+      vim.notify('Commit message copied to clipboard', vim.log.levels.INFO)
+    end)
+  end)
+end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
+
 -- Open a terminal in a split
 vim.keymap.set('n', '<leader>tt', function()
   vim.cmd 'botright split'

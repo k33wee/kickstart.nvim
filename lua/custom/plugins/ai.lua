@@ -16,7 +16,8 @@ return {
       },
     },
     keys = {
-      { '<leader>ct', '<cmd>Copilot toggle<CR>', desc = 'Copilot [T]oggle' },
+      { '<leader>ce', '<cmd>Copilot enable<CR>', desc = 'Copilot [E]nable' },
+      { '<leader>cd', '<cmd>Copilot disable<CR>', desc = 'Copilot [D]isable' },
     },
   },
 }
