@@ -198,15 +198,103 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
 -- Open GitHub Copilot CLI inside Neovim
-vim.keymap.set('n', '<leader>cp', function()
+local copilot_term_buf = nil
+local function ensure_copilot_term()
+  if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
+    local win = vim.fn.bufwinid(copilot_term_buf)
+    if win == -1 then
+      vim.cmd 'botright split'
+      vim.api.nvim_set_current_buf(copilot_term_buf)
+    end
+    return true
+  end
+
   if vim.fn.executable 'copilot' ~= 1 then
     vim.notify('copilot CLI not found in $PATH', vim.log.levels.ERROR)
-    return
+    return false
   end
+
   vim.cmd 'botright split'
   vim.cmd 'terminal copilot'
-  vim.cmd 'startinsert'
-end, { desc = 'Copilot CLI' })
+  copilot_term_buf = vim.api.nvim_get_current_buf()
+  return true
+end
+
+local function focus_copilot_term()
+  if not (copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf)) then return false end
+  local win = vim.fn.bufwinid(copilot_term_buf)
+  if win == -1 then
+    vim.cmd 'botright split'
+    vim.api.nvim_set_current_buf(copilot_term_buf)
+    return true
+  end
+  vim.api.nvim_set_current_win(win)
+  return true
+end
+
+local function startinsert_in_copilot_term()
+  if not focus_copilot_term() then return false end
+  local win = vim.fn.bufwinid(copilot_term_buf)
+  if win == -1 then return false end
+  vim.api.nvim_win_call(win, function() vim.cmd 'startinsert' end)
+  return true
+end
+
+local function get_visual_line_range()
+  local start_row = vim.fn.line 'v'
+  local end_row = vim.fn.line '.'
+  if start_row == 0 or end_row == 0 then
+    local start_pos = vim.fn.getpos "'<"
+    local end_pos = vim.fn.getpos "'>"
+    start_row, end_row = start_pos[2], end_pos[2]
+  end
+  if start_row == 0 or end_row == 0 then return nil, nil end
+  if start_row > end_row then
+    start_row, end_row = end_row, start_row
+  end
+  return start_row, end_row
+end
+
+local function file_line_reference(start_line, end_line)
+  local full_path = vim.api.nvim_buf_get_name(0)
+  if full_path == '' then return nil end
+  local rel_path = vim.fn.fnamemodify(full_path, ':.')
+  return string.format('@%s:%d-%d', rel_path, start_line, end_line)
+end
+
+vim.keymap.set('n', '<leader>cp', function()
+  if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
+    local win = vim.fn.bufwinid(copilot_term_buf)
+    if win ~= -1 then
+      vim.api.nvim_win_close(win, true)
+      return
+    end
+  end
+  if not ensure_copilot_term() then return end
+  startinsert_in_copilot_term()
+end, { desc = 'Copilot CLI toggle' })
+vim.keymap.set('x', '<leader>cp', function()
+  local start_line, end_line = get_visual_line_range()
+  if not start_line or not end_line then
+    vim.notify('No visual selection found', vim.log.levels.WARN)
+    return
+  end
+  local reference = file_line_reference(start_line, end_line)
+  if not reference then
+    vim.notify('Buffer has no file path', vim.log.levels.WARN)
+    return
+  end
+  if not ensure_copilot_term() then return end
+  local ok, job_id = pcall(vim.api.nvim_buf_get_var, copilot_term_buf, 'terminal_job_id')
+  if not ok or type(job_id) ~= 'number' then
+    vim.notify('Copilot terminal is not ready', vim.log.levels.ERROR)
+    return
+  end
+  vim.fn.chansend(job_id, reference .. '\n')
+  local esc = vim.api.nvim_replace_termcodes('<Esc>', true, false, true)
+  vim.api.nvim_feedkeys(esc, 'nx', false)
+  vim.schedule(startinsert_in_copilot_term)
+end, { desc = 'Copilot CLI with range ref' })
 
 -- Open a terminal in a split
 vim.keymap.set('n', '<leader>tt', function()
