@@ -75,6 +75,7 @@ return {
         'rust-analyzer',
         'typescript-language-server',
         'prettier',
+        'markdownlint',
         'rustfmt',
       }
 
