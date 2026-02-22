@@ -203,7 +203,7 @@ local function ensure_copilot_term()
   if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
     local win = vim.fn.bufwinid(copilot_term_buf)
     if win == -1 then
-      vim.cmd 'botright split'
+      vim.cmd 'botright vsplit'
       vim.api.nvim_set_current_buf(copilot_term_buf)
     end
     return true
@@ -214,7 +214,7 @@ local function ensure_copilot_term()
     return false
   end
 
-  vim.cmd 'botright split'
+  vim.cmd 'botright vsplit'
   vim.cmd 'terminal copilot'
   copilot_term_buf = vim.api.nvim_get_current_buf()
   return true
@@ -224,7 +224,7 @@ local function focus_copilot_term()
   if not (copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf)) then return false end
   local win = vim.fn.bufwinid(copilot_term_buf)
   if win == -1 then
-    vim.cmd 'botright split'
+    vim.cmd 'botright vsplit'
     vim.api.nvim_set_current_buf(copilot_term_buf)
     return true
   end
@@ -271,7 +271,6 @@ vim.keymap.set('n', '<leader>cp', function()
     end
   end
   if not ensure_copilot_term() then return end
-  startinsert_in_copilot_term()
 end, { desc = 'Copilot CLI toggle' })
 vim.keymap.set('x', '<leader>cp', function()
   local start_line, end_line = get_visual_line_range()
@@ -293,7 +292,6 @@ vim.keymap.set('x', '<leader>cp', function()
   vim.fn.chansend(job_id, reference .. '\n')
   local esc = vim.api.nvim_replace_termcodes('<Esc>', true, false, true)
   vim.api.nvim_feedkeys(esc, 'nx', false)
-  vim.schedule(startinsert_in_copilot_term)
 end, { desc = 'Copilot CLI with range ref' })
 
 local commit_message_generation_in_progress = false
@@ -307,28 +305,53 @@ vim.keymap.set('n', '<leader>cm', function()
     return
   end
 
-  local cmd =
-    [[git diff --staged | copilot --model gpt-4.1 -p "Write a concise Commit message for these staged changes. List all the changes. Output only the subject line." --silent --allow-all]]
+  local prompt = table.concat({
+    'You are a conventional commit assistant.',
+    'Read the staged diff below carefully and rely on its exact content.',
+    '1. Determine the best conventional type (feat, fix, docs, style, refactor, perf, test, build, chore) and an optional scope.',
+    '2. Write a single subject line in the format "<type>(<scope>): <summary>" that accurately reflects the actual file changes and behaviors.',
+    '3. After the subject, add a blank line and describe two or three key diff highlights as "- <change>", referencing file paths or sections exactly as they appear.',
+    '4. Mention the files touched (prefixed with the path) and any behavior changes, keeping it concise.',
+    '5. Output only the formatted commit subject and bullet list; do not invent unrelated changes.',
+  }, '\n')
   commit_message_generation_in_progress = true
   vim.notify('Generating commit message with Copilot CLI...', vim.log.levels.INFO)
 
-  vim.system({ 'sh', '-c', cmd }, { text = true }, function(result)
+  vim.system({ 'git', 'diff', '--staged', '--no-color', '--no-ext-diff' }, { text = true }, function(diff_result)
     vim.schedule(function()
-      commit_message_generation_in_progress = false
-      if result.code ~= 0 then
-        vim.notify('Failed to generate commit message with Copilot CLI', vim.log.levels.ERROR)
+      if diff_result.code ~= 0 then
+        commit_message_generation_in_progress = false
+        vim.notify('Failed to read staged changes', vim.log.levels.ERROR)
         return
       end
 
-      local message = vim.trim(result.stdout or '')
-      if message == '' then
-        vim.notify('Copilot CLI returned an empty commit message', vim.log.levels.WARN)
+      local staged_diff = vim.trim(diff_result.stdout or '')
+      if staged_diff == '' then
+        commit_message_generation_in_progress = false
+        vim.notify('No staged changes found', vim.log.levels.WARN)
         return
       end
 
-      vim.fn.setreg('+', message)
-      vim.fn.setreg('"', message)
-      vim.notify('Commit message copied to clipboard', vim.log.levels.INFO)
+      local full_prompt = table.concat({ prompt, '', 'Staged diff:', staged_diff }, '\n')
+      vim.system({ 'copilot', '--model', 'gpt-4.1', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
+        vim.schedule(function()
+          commit_message_generation_in_progress = false
+          if result.code ~= 0 then
+            vim.notify('Failed to generate commit message with Copilot CLI', vim.log.levels.ERROR)
+            return
+          end
+
+          local message = vim.trim(result.stdout or '')
+          if message == '' then
+            vim.notify('Copilot CLI returned an empty commit message', vim.log.levels.WARN)
+            return
+          end
+
+          vim.fn.setreg('+', message)
+          vim.fn.setreg('"', message)
+          vim.notify('Commit message copied to clipboard', vim.log.levels.INFO)
+        end)
+      end)
     end)
   end)
 end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
@@ -337,7 +360,6 @@ end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 vim.keymap.set('n', '<leader>tt', function()
   vim.cmd 'botright split'
   vim.cmd 'terminal'
-  vim.cmd 'startinsert'
 end, { desc = 'Terminal' })
 
 -- Reopen any *running* terminal buffers that were closed (hidden) previously.

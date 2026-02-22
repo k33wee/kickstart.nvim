@@ -14,6 +14,9 @@ return {
           prev = '<M-p>',
         },
       },
+      filetypes = {
+        ['*'] = true,
+      },
     },
     keys = {
       { '<leader>ce', '<cmd>Copilot enable<CR>', desc = 'Copilot [E]nable' },
