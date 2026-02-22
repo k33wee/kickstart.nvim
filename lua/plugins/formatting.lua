@@ -32,7 +32,6 @@ return {
         javascript = { 'prettierd', 'prettier', stop_after_first = true },
         javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
         markdown = { 'prettierd', 'prettier', stop_after_first = true },
-        rust = { 'rustfmt' },
       },
     },
   },

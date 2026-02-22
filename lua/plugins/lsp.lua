@@ -75,8 +75,19 @@ return {
         'rust-analyzer',
         'typescript-language-server',
         'prettier',
-        'markdownlint',
-        'rustfmt',
+        'markdownlint-cli2',
+        'yamlfmt',
+        'yaml-language-server',
+        'vue-language-server',
+        'astro-language-server',
+        'buf',
+        'docker-language-server',
+        'docker-compose-language-service',
+        'protols',
+        'postgres-language-server',
+        'protolint',
+        'sql-formatter',
+        'uv',
       }
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
