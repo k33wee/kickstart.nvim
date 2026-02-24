@@ -205,6 +205,8 @@ local function ensure_copilot_term()
     if win == -1 then
       vim.cmd 'botright vsplit'
       vim.api.nvim_set_current_buf(copilot_term_buf)
+      local width = math.floor(vim.o.columns * 0.3)
+      vim.api.nvim_win_set_width(0, width)
     end
     return true
   end
@@ -215,6 +217,7 @@ local function ensure_copilot_term()
   end
 
   vim.cmd 'botright vsplit'
+  vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.3))
   vim.cmd 'terminal copilot'
   copilot_term_buf = vim.api.nvim_get_current_buf()
   return true
@@ -226,6 +229,7 @@ local function focus_copilot_term()
   if win == -1 then
     vim.cmd 'botright vsplit'
     vim.api.nvim_set_current_buf(copilot_term_buf)
+    vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.3))
     return true
   end
   vim.api.nvim_set_current_win(win)
