@@ -425,6 +425,7 @@ local _toggleterm_ok, _toggleterm = pcall(require, 'toggleterm.terminal')
 if _toggleterm_ok and _toggleterm and _toggleterm.Terminal then
   local Terminal = _toggleterm.Terminal
   local terminals = {}
+  _G._toggleterm_terminals = terminals
 
   local function create_terminal(direction)
     local opts = { hidden = true, close_on_exit = false, direction = direction }
@@ -494,9 +495,22 @@ vim.api.nvim_create_user_command('TermKill', function()
     vim.notify('Not a terminal buffer', vim.log.levels.WARN)
     return
   end
-  local ok, job_id = pcall(vim.api.nvim_buf_get_var, 0, 'terminal_job_id')
+  local bufnr = vim.api.nvim_get_current_buf()
+  local ok, job_id = pcall(vim.api.nvim_buf_get_var, bufnr, 'terminal_job_id')
   if ok and type(job_id) == 'number' and job_id > 0 then pcall(vim.fn.jobstop, job_id) end
-  pcall(vim.api.nvim_buf_delete, 0, { force = true })
+
+  -- Clean up tracked toggleterm instances if available
+  if type(_G) == 'table' and _G._toggleterm_terminals then
+    for k, t in pairs(_G._toggleterm_terminals) do
+      if t and t.bufnr == bufnr then
+        -- attempt to close terminal instance gracefully
+        pcall(function() if type(t.close) == 'function' then t:close() elseif type(t.toggle) == 'function' then t:toggle() end end)
+        _G._toggleterm_terminals[k] = nil
+      end
+    end
+  end
+
+  pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
 end, { desc = 'Stop terminal job and wipe buffer' })
 
 vim.keymap.set('n', '<leader>tk', '<cmd>TermKill<CR>', { desc = '[T]erminal [K]ill' })
