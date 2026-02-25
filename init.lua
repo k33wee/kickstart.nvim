@@ -420,11 +420,52 @@ vim.keymap.set('n', '<leader>cm', function()
   end)
 end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 
--- Open a terminal in a split
-vim.keymap.set('n', '<leader>tt', function()
-  vim.cmd 'botright split'
-  vim.cmd 'terminal'
-end, { desc = 'Terminal' })
+-- Toggleterm helper mappings under <leader>t*
+local _toggleterm_ok, _toggleterm = pcall(require, 'toggleterm.terminal')
+if _toggleterm_ok and _toggleterm and _toggleterm.Terminal then
+  local Terminal = _toggleterm.Terminal
+  local terminals = {}
+
+  local function create_terminal(direction)
+    local opts = { hidden = true, close_on_exit = false, direction = direction }
+    if direction == 'float' then
+      opts.float_opts = { border = 'curved' }
+    elseif direction == 'horizontal' then
+      opts.size = 15
+    elseif direction == 'vertical' then
+      opts.size = math.floor(vim.o.columns * 0.4)
+    end
+    return Terminal:new(opts)
+  end
+
+  local function toggle_terminal(direction)
+    local t = terminals[direction]
+    if t and t.toggle then
+      t:toggle()
+    else
+      t = create_terminal(direction)
+      terminals[direction] = t
+      t:toggle()
+    end
+  end
+
+  local function new_terminal(direction)
+    local t = create_terminal(direction or 'float')
+    t:toggle()
+    return t
+  end
+
+  vim.keymap.set('n', '<leader>tn', function() new_terminal('float') end, { desc = '[T]erminal [N]ew' })
+  vim.keymap.set('n', '<leader>tf', function() toggle_terminal('float') end, { desc = '[T]erminal [F]loat' })
+  vim.keymap.set('n', '<leader>th', function() toggle_terminal('horizontal') end, { desc = '[T]erminal [H]orizontal' })
+  vim.keymap.set('n', '<leader>tv', function() toggle_terminal('vertical') end, { desc = '[T]erminal [V]ertical' })
+else
+  -- Fallback to builtin split terminal if toggleterm not available
+  vim.keymap.set('n', '<leader>tt', function()
+    vim.cmd 'botright split'
+    vim.cmd 'terminal'
+  end, { desc = 'Terminal' })
+end
 
 -- Reopen any *running* terminal buffers that were closed (hidden) previously.
 vim.api.nvim_create_user_command('TermRestore', function()
