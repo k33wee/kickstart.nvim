@@ -421,52 +421,90 @@ vim.keymap.set('n', '<leader>cm', function()
 end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 
 -- Toggleterm helper mappings under <leader>t*
-local _toggleterm_ok, _toggleterm = pcall(require, 'toggleterm.terminal')
-if _toggleterm_ok and _toggleterm and _toggleterm.Terminal then
-  local Terminal = _toggleterm.Terminal
-  local terminals = {}
-  _G._toggleterm_terminals = terminals
+local terminals = _G._toggleterm_terminals or {}
+_G._toggleterm_terminals = terminals
 
-  local function create_terminal(direction)
-    local opts = { hidden = true, close_on_exit = false, direction = direction }
-    if direction == 'float' then
-      opts.float_opts = { border = 'curved' }
-    elseif direction == 'horizontal' then
-      opts.size = 15
-    elseif direction == 'vertical' then
-      opts.size = math.floor(vim.o.columns * 0.4)
+local function _create_toggleterm(direction)
+  local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
+  if not ok or not terminal_mod or not terminal_mod.Terminal then
+    return nil, 'no_toggleterm'
+  end
+  local Terminal = terminal_mod.Terminal
+  local opts = { hidden = true, close_on_exit = false, direction = direction }
+  if direction == 'float' then
+    opts.float_opts = { border = 'curved' }
+    opts.on_open = function(term)
+      local bufnr = term.bufnr
+      -- track active float terminals and previous showmode
+      _G._toggleterm_showmode_prev = _G._toggleterm_showmode_prev == nil and vim.o.showmode or _G._toggleterm_showmode_prev
+      _G._toggleterm_float_count = (_G._toggleterm_float_count or 0) + 1
+      vim.o.showmode = true
+      -- ensure the terminal window statusline shows the mode
+      local win = vim.fn.bufwinid(bufnr)
+      if win ~= -1 then
+        pcall(vim.api.nvim_win_set_option, win, 'statusline', 'TERM %{mode()}')
+      else
+        vim.defer_fn(function()
+          local w = vim.fn.bufwinid(bufnr)
+          if w ~= -1 then pcall(vim.api.nvim_win_set_option, w, 'statusline', 'TERM %{mode()}') end
+        end, 50)
+      end
     end
-    return Terminal:new(opts)
-  end
-
-  local function toggle_terminal(direction)
-    local t = terminals[direction]
-    if t and t.toggle then
-      t:toggle()
-    else
-      t = create_terminal(direction)
-      terminals[direction] = t
-      t:toggle()
+    opts.on_close = function(term)
+      _G._toggleterm_float_count = math.max((_G._toggleterm_float_count or 1) - 1, 0)
+      if _G._toggleterm_float_count == 0 and _G._toggleterm_showmode_prev ~= nil then
+        vim.o.showmode = _G._toggleterm_showmode_prev
+        _G._toggleterm_showmode_prev = nil
+      end
     end
+  elseif direction == 'horizontal' then
+    opts.size = 15
+  elseif direction == 'vertical' then
+    opts.size = math.floor(vim.o.columns * 0.4)
   end
-
-  local function new_terminal(direction)
-    local t = create_terminal(direction or 'float')
-    t:toggle()
-    return t
-  end
-
-  vim.keymap.set('n', '<leader>tn', function() new_terminal('float') end, { desc = '[T]erminal [N]ew' })
-  vim.keymap.set('n', '<leader>tf', function() toggle_terminal('float') end, { desc = '[T]erminal [F]loat' })
-  vim.keymap.set('n', '<leader>th', function() toggle_terminal('horizontal') end, { desc = '[T]erminal [H]orizontal' })
-  vim.keymap.set('n', '<leader>tv', function() toggle_terminal('vertical') end, { desc = '[T]erminal [V]ertical' })
-else
-  -- Fallback to builtin split terminal if toggleterm not available
-  vim.keymap.set('n', '<leader>tt', function()
-    vim.cmd 'botright split'
-    vim.cmd 'terminal'
-  end, { desc = 'Terminal' })
+  local t = Terminal:new(opts)
+  return t, nil
 end
+
+local function toggle_terminal(direction)
+  direction = direction or 'float'
+  if terminals[direction] and terminals[direction].toggle then
+    terminals[direction]:toggle()
+    return
+  end
+  local t, err = _create_toggleterm(direction)
+  if not t then
+    if err == 'no_toggleterm' then
+      vim.cmd 'botright split'
+      vim.cmd 'terminal'
+    end
+    return
+  end
+  terminals[direction] = t
+  t:toggle()
+end
+
+local function new_terminal(direction)
+  direction = direction or 'float'
+  local t, err = _create_toggleterm(direction)
+  if not t then
+    if err == 'no_toggleterm' then
+      vim.cmd 'botright split'
+      vim.cmd 'terminal'
+    end
+    return
+  end
+  local id = tostring(math.random(1, 1e9))
+  terminals[id] = t
+  t:toggle()
+  return t
+end
+
+vim.keymap.set('n', '<leader>tn', function() new_terminal('float') end, { desc = '[T]erminal [N]ew' })
+vim.keymap.set('n', '<leader>tf', function() toggle_terminal('float') end, { desc = '[T]erminal [F]loat' })
+vim.keymap.set('n', '<leader>th', function() toggle_terminal('horizontal') end, { desc = '[T]erminal [H]orizontal' })
+vim.keymap.set('n', '<leader>tv', function() toggle_terminal('vertical') end, { desc = '[T]erminal [V]ertical' })
+vim.keymap.set('n', '<leader>tt', function() toggle_terminal('float') end, { desc = 'Terminal (toggle <leader>tt)' })
 
 -- Reopen any *running* terminal buffers that were closed (hidden) previously.
 vim.api.nvim_create_user_command('TermRestore', function()
