@@ -423,11 +423,12 @@ end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 -- Toggleterm helper mappings under <leader>t*
 local terminals = _G._toggleterm_terminals or {}
 _G._toggleterm_terminals = terminals
+_G._toggleterm_float_stack = _G._toggleterm_float_stack or {}
 
 local function _create_toggleterm(direction)
   local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
   if not ok or not terminal_mod or not terminal_mod.Terminal then
-    return nil, 'no_toggleterm'
+    return nil, nil, 'no_toggleterm'
   end
   local Terminal = terminal_mod.Terminal
   local opts = { hidden = true, close_on_exit = false, direction = direction }
@@ -435,11 +436,9 @@ local function _create_toggleterm(direction)
     opts.float_opts = { border = 'curved' }
     opts.on_open = function(term)
       local bufnr = term.bufnr
-      -- track active float terminals and previous showmode
       _G._toggleterm_showmode_prev = _G._toggleterm_showmode_prev == nil and vim.o.showmode or _G._toggleterm_showmode_prev
       _G._toggleterm_float_count = (_G._toggleterm_float_count or 0) + 1
       vim.o.showmode = true
-      -- ensure the terminal window statusline shows the mode
       local win = vim.fn.bufwinid(bufnr)
       if win ~= -1 then
         pcall(vim.api.nvim_win_set_option, win, 'statusline', 'TERM %{mode()}')
@@ -457,54 +456,58 @@ local function _create_toggleterm(direction)
         _G._toggleterm_showmode_prev = nil
       end
     end
-  elseif direction == 'horizontal' then
-    opts.size = 15
-  elseif direction == 'vertical' then
-    opts.size = math.floor(vim.o.columns * 0.4)
   end
   local t = Terminal:new(opts)
-  return t, nil
-end
-
-local function toggle_terminal(direction)
-  direction = direction or 'float'
-  if terminals[direction] and terminals[direction].toggle then
-    terminals[direction]:toggle()
-    return
-  end
-  local t, err = _create_toggleterm(direction)
-  if not t then
-    if err == 'no_toggleterm' then
-      vim.cmd 'botright split'
-      vim.cmd 'terminal'
-    end
-    return
-  end
-  terminals[direction] = t
-  t:toggle()
-end
-
-local function new_terminal(direction)
-  direction = direction or 'float'
-  local t, err = _create_toggleterm(direction)
-  if not t then
-    if err == 'no_toggleterm' then
-      vim.cmd 'botright split'
-      vim.cmd 'terminal'
-    end
-    return
-  end
   local id = tostring(math.random(1, 1e9))
   terminals[id] = t
-  t:toggle()
-  return t
+  return t, id, nil
 end
 
-vim.keymap.set('n', '<leader>tn', function() new_terminal('float') end, { desc = '[T]erminal [N]ew' })
-vim.keymap.set('n', '<leader>tf', function() toggle_terminal('float') end, { desc = '[T]erminal [F]loat' })
-vim.keymap.set('n', '<leader>th', function() toggle_terminal('horizontal') end, { desc = '[T]erminal [H]orizontal' })
-vim.keymap.set('n', '<leader>tv', function() toggle_terminal('vertical') end, { desc = '[T]erminal [V]ertical' })
-vim.keymap.set('n', '<leader>tt', function() toggle_terminal('float') end, { desc = 'Terminal (toggle <leader>tt)' })
+local function toggle_tt()
+  local stack = _G._toggleterm_float_stack
+  if #stack == 0 then
+    local t, id, err = _create_toggleterm('float')
+    if not t then
+      if err == 'no_toggleterm' then
+        vim.cmd 'botright split'
+        vim.cmd 'terminal'
+      end
+      return
+    end
+    table.insert(stack, { id = id, term = t })
+    t:toggle()
+    return
+  end
+  local top_entry = stack[#stack]
+  local top = top_entry.term
+  local win = vim.fn.bufwinid(top.bufnr)
+  if win == -1 then
+    top:toggle()
+  else
+    top:toggle()
+  end
+end
+
+local function add_new_tn()
+  local stack = _G._toggleterm_float_stack
+  local top_entry = stack[#stack]
+  if top_entry and top_entry.term and vim.fn.bufwinid(top_entry.term.bufnr) ~= -1 then
+    pcall(function() top_entry.term:toggle() end)
+  end
+  local t, id, err = _create_toggleterm('float')
+  if not t then
+    if err == 'no_toggleterm' then
+      vim.cmd 'botright split'
+      vim.cmd 'terminal'
+    end
+    return
+  end
+  table.insert(stack, { id = id, term = t })
+  t:toggle()
+end
+
+vim.keymap.set('n', '<leader>tt', toggle_tt, { desc = 'Toggle floating terminal' })
+vim.keymap.set('n', '<leader>tn', add_new_tn, { desc = '[T]erminal [N]ew (share float space)' })
 
 -- Reopen any *running* terminal buffers that were closed (hidden) previously.
 vim.api.nvim_create_user_command('TermRestore', function()
@@ -541,9 +544,18 @@ vim.api.nvim_create_user_command('TermKill', function()
   if type(_G) == 'table' and _G._toggleterm_terminals then
     for k, t in pairs(_G._toggleterm_terminals) do
       if t and t.bufnr == bufnr then
-        -- attempt to close terminal instance gracefully
         pcall(function() if type(t.close) == 'function' then t:close() elseif type(t.toggle) == 'function' then t:toggle() end end)
         _G._toggleterm_terminals[k] = nil
+      end
+    end
+  end
+
+  -- Remove from float stack
+  if type(_G) == 'table' and _G._toggleterm_float_stack then
+    for i = #_G._toggleterm_float_stack, 1, -1 do
+      local entry = _G._toggleterm_float_stack[i]
+      if entry and entry.term and entry.term.bufnr == bufnr then
+        table.remove(_G._toggleterm_float_stack, i)
       end
     end
   end
