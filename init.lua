@@ -425,48 +425,77 @@ local terminals = _G._toggleterm_terminals or {}
 _G._toggleterm_terminals = terminals
 _G._toggleterm_float_stack = _G._toggleterm_float_stack or {}
 
-local function _create_toggleterm(direction)
+local function _create_float_terminal()
   local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
   if not ok or not terminal_mod or not terminal_mod.Terminal then
     return nil, nil, 'no_toggleterm'
   end
   local Terminal = terminal_mod.Terminal
-  local opts = { hidden = true, close_on_exit = false, direction = direction }
-  if direction == 'float' then
-    opts.float_opts = { border = 'curved' }
-    opts.on_open = function(term)
-      local bufnr = term.bufnr
-      _G._toggleterm_showmode_prev = _G._toggleterm_showmode_prev == nil and vim.o.showmode or _G._toggleterm_showmode_prev
-      _G._toggleterm_float_count = (_G._toggleterm_float_count or 0) + 1
-      vim.o.showmode = true
-      local win = vim.fn.bufwinid(bufnr)
-      if win ~= -1 then
-        pcall(vim.api.nvim_win_set_option, win, 'statusline', 'TERM %{mode()}')
-      else
-        vim.defer_fn(function()
-          local w = vim.fn.bufwinid(bufnr)
-          if w ~= -1 then pcall(vim.api.nvim_win_set_option, w, 'statusline', 'TERM %{mode()}') end
-        end, 50)
-      end
+  local opts = {
+    hidden = true,
+    close_on_exit = false,
+    direction = 'float',
+    float_opts = { border = 'curved' },
+  }
+
+  opts.on_open = function(term)
+    local bufnr = term.bufnr
+    _G._toggleterm_showmode_prev = _G._toggleterm_showmode_prev == nil and vim.o.showmode or _G._toggleterm_showmode_prev
+    _G._toggleterm_float_count = (_G._toggleterm_float_count or 0) + 1
+    vim.o.showmode = true
+    local win = vim.fn.bufwinid(bufnr)
+    if win ~= -1 then
+      pcall(vim.api.nvim_win_set_option, win, 'statusline', 'TERM %{mode()}')
+    else
+      vim.defer_fn(function()
+        local w = vim.fn.bufwinid(bufnr)
+        if w ~= -1 then pcall(vim.api.nvim_win_set_option, w, 'statusline', 'TERM %{mode()}') end
+      end, 50)
     end
-    opts.on_close = function(term)
-      _G._toggleterm_float_count = math.max((_G._toggleterm_float_count or 1) - 1, 0)
-      if _G._toggleterm_float_count == 0 and _G._toggleterm_showmode_prev ~= nil then
-        vim.o.showmode = _G._toggleterm_showmode_prev
-        _G._toggleterm_showmode_prev = nil
+  end
+
+  opts.on_close = function(term)
+    _G._toggleterm_float_count = math.max((_G._toggleterm_float_count or 1) - 1, 0)
+    if _G._toggleterm_float_count == 0 and _G._toggleterm_showmode_prev ~= nil then
+      vim.o.showmode = _G._toggleterm_showmode_prev
+      _G._toggleterm_showmode_prev = nil
+    end
+    -- remove from float stack if present
+    if _G._toggleterm_float_stack then
+      for i = #_G._toggleterm_float_stack, 1, -1 do
+        if _G._toggleterm_float_stack[i].term == term then
+          table.remove(_G._toggleterm_float_stack, i)
+          break
+        end
       end
     end
   end
+
   local t = Terminal:new(opts)
   local id = tostring(math.random(1, 1e9))
   terminals[id] = t
   return t, id, nil
 end
 
+local function is_term_visible(term)
+  if not term or not term.bufnr then return false end
+  return vim.fn.bufwinid(term.bufnr) ~= -1
+end
+
+local function hide_all_floats()
+  if not _G._toggleterm_float_stack then return end
+  for i = #_G._toggleterm_float_stack, 1, -1 do
+    local entry = _G._toggleterm_float_stack[i]
+    if entry and entry.term and is_term_visible(entry.term) then
+      pcall(function() entry.term:toggle() end)
+    end
+  end
+end
+
 local function toggle_tt()
   local stack = _G._toggleterm_float_stack
   if #stack == 0 then
-    local t, id, err = _create_toggleterm('float')
+    local t, id, err = _create_float_terminal()
     if not t then
       if err == 'no_toggleterm' then
         vim.cmd 'botright split'
@@ -478,23 +507,21 @@ local function toggle_tt()
     t:toggle()
     return
   end
-  local top_entry = stack[#stack]
-  local top = top_entry.term
-  local win = vim.fn.bufwinid(top.bufnr)
-  if win == -1 then
-    top:toggle()
+  local top = stack[#stack].term
+  if is_term_visible(top) then
+    -- hide all floats when toggling off
+    hide_all_floats()
   else
-    top:toggle()
+    pcall(function() top:toggle() end)
   end
 end
 
 local function add_new_tn()
   local stack = _G._toggleterm_float_stack
-  local top_entry = stack[#stack]
-  if top_entry and top_entry.term and vim.fn.bufwinid(top_entry.term.bufnr) ~= -1 then
-    pcall(function() top_entry.term:toggle() end)
+  if #stack > 0 and is_term_visible(stack[#stack].term) then
+    pcall(function() stack[#stack].term:toggle() end)
   end
-  local t, id, err = _create_toggleterm('float')
+  local t, id, err = _create_float_terminal()
   if not t then
     if err == 'no_toggleterm' then
       vim.cmd 'botright split'
@@ -506,7 +533,7 @@ local function add_new_tn()
   t:toggle()
 end
 
-vim.keymap.set('n', '<leader>tt', toggle_tt, { desc = 'Toggle floating terminal' })
+vim.keymap.set('n', '<leader>tt', toggle_tt, { desc = 'Toggle floating terminal (show/hide top)' })
 vim.keymap.set('n', '<leader>tn', add_new_tn, { desc = '[T]erminal [N]ew (share float space)' })
 
 -- Reopen any *running* terminal buffers that were closed (hidden) previously.
