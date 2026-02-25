@@ -199,18 +199,54 @@ vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' }
 
 -- Open GitHub Copilot CLI inside Neovim
 local copilot_term_buf = nil
+local copilot_term = nil
+
 local function ensure_copilot_term()
-  if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
-    local win = vim.fn.bufwinid(copilot_term_buf)
-    if win == -1 then
-      vim.cmd 'botright vsplit'
-      vim.api.nvim_set_current_buf(copilot_term_buf)
-      local width = math.floor(vim.o.columns * 0.3)
-      vim.api.nvim_win_set_width(0, width)
+  -- Prefer toggleterm if available
+  local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
+  if ok and terminal_mod and terminal_mod.Terminal then
+    local Terminal = terminal_mod.Terminal
+    -- If a terminal instance already exists, ensure buffer ref and open if needed
+    if copilot_term then
+      if copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
+        local win = vim.fn.bufwinid(copilot_term.bufnr)
+        if win == -1 then
+          copilot_term:toggle()
+        end
+        copilot_term_buf = copilot_term.bufnr
+        return true
+      end
     end
+
+    -- Create a new toggleterm Terminal for the copilot CLI
+    copilot_term = Terminal:new({
+      cmd = 'copilot',
+      hidden = true,
+      close_on_exit = false,
+      -- Use toggleterm's configured direction (do not override)
+      on_open = function(term)
+        copilot_term_buf = term.bufnr
+      end,
+    })
+
+    copilot_term:toggle()
+
+    if copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
+      copilot_term_buf = copilot_term.bufnr
+      return true
+    end
+
+    -- Try to set bufnr shortly after toggle if not yet available
+    vim.defer_fn(function()
+      if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
+        copilot_term_buf = copilot_term.bufnr
+      end
+    end, 50)
+
     return true
   end
 
+  -- Fallback to built-in terminal if toggleterm isn't available
   if vim.fn.executable 'copilot' ~= 1 then
     vim.notify('copilot CLI not found in $PATH', vim.log.levels.ERROR)
     return false
@@ -267,6 +303,13 @@ local function file_line_reference(start_line, end_line)
 end
 
 vim.keymap.set('n', '<leader>cp', function()
+  -- If toggleterm Terminal instance exists, use it to toggle the terminal
+  if copilot_term and copilot_term.toggle then
+    copilot_term:toggle()
+    return
+  end
+
+  -- Fallback to previous behavior when using builtin terminal
   if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
     local win = vim.fn.bufwinid(copilot_term_buf)
     if win ~= -1 then
@@ -274,8 +317,18 @@ vim.keymap.set('n', '<leader>cp', function()
       return
     end
   end
+
   if not ensure_copilot_term() then return end
+
+  -- If using toggleterm, focus the terminal window
+  if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
+    local win = vim.fn.bufwinid(copilot_term.bufnr)
+    if win ~= -1 then
+      vim.api.nvim_set_current_win(win)
+    end
+  end
 end, { desc = 'Copilot CLI toggle' })
+
 vim.keymap.set('x', '<leader>cp', function()
   local start_line, end_line = get_visual_line_range()
   if not start_line or not end_line then
@@ -288,7 +341,14 @@ vim.keymap.set('x', '<leader>cp', function()
     return
   end
   if not ensure_copilot_term() then return end
-  local ok, job_id = pcall(vim.api.nvim_buf_get_var, copilot_term_buf, 'terminal_job_id')
+
+  local buf = copilot_term_buf
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
+    vim.notify('Copilot terminal buffer is not available', vim.log.levels.ERROR)
+    return
+  end
+
+  local ok, job_id = pcall(vim.api.nvim_buf_get_var, buf, 'terminal_job_id')
   if not ok or type(job_id) ~= 'number' then
     vim.notify('Copilot terminal is not ready', vim.log.levels.ERROR)
     return
