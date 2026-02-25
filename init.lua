@@ -253,27 +253,6 @@ local function ensure_copilot_term()
   return true
 end
 
-local function focus_copilot_term()
-  if not (copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf)) then return false end
-  local win = vim.fn.bufwinid(copilot_term_buf)
-  if win == -1 then
-    vim.cmd 'botright vsplit'
-    vim.api.nvim_set_current_buf(copilot_term_buf)
-    vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.3))
-    return true
-  end
-  vim.api.nvim_set_current_win(win)
-  return true
-end
-
-local function startinsert_in_copilot_term()
-  if not focus_copilot_term() then return false end
-  local win = vim.fn.bufwinid(copilot_term_buf)
-  if win == -1 then return false end
-  vim.api.nvim_win_call(win, function() vim.cmd 'startinsert' end)
-  return true
-end
-
 local function get_visual_line_range()
   local start_row = vim.fn.line 'v'
   local end_row = vim.fn.line '.'
@@ -364,11 +343,10 @@ vim.keymap.set('n', '<leader>cm', function()
   local prompt = table.concat({
     'You are a conventional commit assistant.',
     'Read the staged diff below carefully and rely on its exact content.',
-    '1. Determine the best conventional type (feat, fix, docs, style, refactor, perf, test, build, chore) and an optional scope.',
+    '1. Determine the best conventional type (feat, fix, docs, style, refactor, perf, test, build, chore).',
     '2. Write a single subject line in the format "<type>(<scope>): <summary>" that accurately reflects the actual file changes and behaviors.',
     '3. After the subject, add a blank line and describe two or three key diff highlights as "- <change>", referencing file paths or sections exactly as they appear.',
-    '4. Mention the files touched (prefixed with the path) and any behavior changes, keeping it concise.',
-    '5. Output only the formatted commit subject and bullet list; do not invent unrelated changes.',
+    '4. Output only the formatted commit subject and bullet list; do not invent unrelated changes.',
   }, '\n')
   commit_message_generation_in_progress = true
   vim.notify('Generating commit message with Copilot CLI...', vim.log.levels.INFO)
@@ -389,7 +367,7 @@ vim.keymap.set('n', '<leader>cm', function()
       end
 
       local full_prompt = table.concat({ prompt, '', 'Staged diff:', staged_diff }, '\n')
-      vim.system({ 'copilot', '--model', 'gpt-4.1', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
+      vim.system({ 'copilot', '--model', 'gpt-5-mini', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
         vim.schedule(function()
           commit_message_generation_in_progress = false
           if result.code ~= 0 then
