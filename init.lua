@@ -210,24 +210,20 @@ local function ensure_copilot_term()
     if copilot_term then
       if copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
         local win = vim.fn.bufwinid(copilot_term.bufnr)
-        if win == -1 then
-          copilot_term:toggle()
-        end
+        if win == -1 then copilot_term:toggle() end
         copilot_term_buf = copilot_term.bufnr
         return true
       end
     end
 
     -- Create a new toggleterm Terminal for the copilot CLI
-    copilot_term = Terminal:new({
+    copilot_term = Terminal:new {
       cmd = 'copilot',
       hidden = true,
       close_on_exit = false,
       -- Use toggleterm's configured direction (do not override)
-      on_open = function(term)
-        copilot_term_buf = term.bufnr
-      end,
-    })
+      on_open = function(term) copilot_term_buf = term.bufnr end,
+    }
 
     copilot_term:toggle()
 
@@ -238,9 +234,7 @@ local function ensure_copilot_term()
 
     -- Try to set bufnr shortly after toggle if not yet available
     vim.defer_fn(function()
-      if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
-        copilot_term_buf = copilot_term.bufnr
-      end
+      if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then copilot_term_buf = copilot_term.bufnr end
     end, 50)
 
     return true
@@ -323,9 +317,7 @@ vim.keymap.set('n', '<leader>cp', function()
   -- If using toggleterm, focus the terminal window
   if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
     local win = vim.fn.bufwinid(copilot_term.bufnr)
-    if win ~= -1 then
-      vim.api.nvim_set_current_win(win)
-    end
+    if win ~= -1 then vim.api.nvim_set_current_win(win) end
   end
 end, { desc = 'Copilot CLI toggle' })
 
@@ -420,185 +412,68 @@ vim.keymap.set('n', '<leader>cm', function()
   end)
 end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 
--- Toggleterm helper mappings under <leader>t*
-local terminals = _G._toggleterm_terminals or {}
-_G._toggleterm_terminals = terminals
-_G._toggleterm_float_stack = _G._toggleterm_float_stack or {}
+-- ==========================================================
+-- Lazy-Loaded ToggleTerm Mappings
+-- ==========================================================
 
-local function _create_float_terminal()
+-- <leader>tt: Toggles the single floating terminal
+vim.keymap.set('n', '<leader>tt', function()
   local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
-  if not ok or not terminal_mod or not terminal_mod.Terminal then
-    return nil, nil, 'no_toggleterm'
+  if not ok then
+    vim.notify('ToggleTerm not found. Run :Lazy to check installation.', vim.log.levels.WARN)
+    return
   end
+
+  if not _G.my_float_term then
+    _G.my_float_term = terminal_mod.Terminal:new {
+      direction = 'float',
+      float_opts = { border = 'curved' },
+      hidden = true,
+      on_open = function(term)
+        vim.cmd 'startinsert!'
+        -- Close the float easily by pressing 'q' in normal mode
+        vim.api.nvim_buf_set_keymap(term.bufnr, 'n', 'q', '<cmd>close<CR>', { noremap = true, silent = true })
+      end,
+    }
+  end
+  _G.my_float_term:toggle()
+end, { desc = 'Toggle floating terminal' })
+
+-- <leader>tn: opens a new terminal in a horizontal split, check if there are other opened terminals and create a new one without replacing the existing one, if pressed again split again and open another terminal, and so on.
+vim.keymap.set('n', '<leader>tn', function()
+  local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
+  if not ok then
+    vim.notify('ToggleTerm not found. Run :Lazy to check installation.', vim.log.levels.WARN)
+    return
+  end
+
   local Terminal = terminal_mod.Terminal
-  local opts = {
+  local new_term = Terminal:new {
+    direction = 'horizontal',
     hidden = true,
-    close_on_exit = false,
-    direction = 'float',
-    float_opts = { border = 'curved' },
+    on_open = function(term) vim.cmd 'startinsert!' end,
   }
+  new_term:toggle()
+end, { desc = 'Open new horizontal terminal' })
 
-  opts.on_open = function(term)
-    local bufnr = term.bufnr
-    _G._toggleterm_showmode_prev = _G._toggleterm_showmode_prev == nil and vim.o.showmode or _G._toggleterm_showmode_prev
-    _G._toggleterm_float_count = (_G._toggleterm_float_count or 0) + 1
-    vim.o.showmode = true
-    local win = vim.fn.bufwinid(bufnr)
-    if win ~= -1 then
-      pcall(vim.api.nvim_win_set_option, win, 'statusline', 'TERM %{mode()}')
-    else
-      vim.defer_fn(function()
-        local w = vim.fn.bufwinid(bufnr)
-        if w ~= -1 then pcall(vim.api.nvim_win_set_option, w, 'statusline', 'TERM %{mode()}') end
-      end, 50)
-    end
-  end
-
-  opts.on_close = function(term)
-    _G._toggleterm_float_count = math.max((_G._toggleterm_float_count or 1) - 1, 0)
-    if _G._toggleterm_float_count == 0 and _G._toggleterm_showmode_prev ~= nil then
-      vim.o.showmode = _G._toggleterm_showmode_prev
-      _G._toggleterm_showmode_prev = nil
-    end
-    -- remove from float stack if present
-    if _G._toggleterm_float_stack then
-      for i = #_G._toggleterm_float_stack, 1, -1 do
-        if _G._toggleterm_float_stack[i].term == term then
-          table.remove(_G._toggleterm_float_stack, i)
-          break
-        end
-      end
-    end
-  end
-
-  local t = Terminal:new(opts)
-  local id = tostring(math.random(1, 1e9))
-  terminals[id] = t
-  return t, id, nil
-end
-
-local function is_term_visible(term)
-  if not term or not term.bufnr then return false end
-  return vim.fn.bufwinid(term.bufnr) ~= -1
-end
-
-local function hide_all_floats()
-  if not _G._toggleterm_float_stack then return end
-  for i = #_G._toggleterm_float_stack, 1, -1 do
-    local entry = _G._toggleterm_float_stack[i]
-    if entry and entry.term and is_term_visible(entry.term) then
-      pcall(function() entry.term:toggle() end)
-    end
-  end
-end
-
-local function toggle_tt()
-  local stack = _G._toggleterm_float_stack
-  if #stack == 0 then
-    local t, id, err = _create_float_terminal()
-    if not t then
-      if err == 'no_toggleterm' then
-        vim.cmd 'botright split'
-        vim.cmd 'terminal'
-      end
-      return
-    end
-    table.insert(stack, { id = id, term = t })
-    t:toggle()
+-- <leader>tk: kills the current terminal buffer, if the current buffer is a terminal.
+--  If the current buffer is not a terminal, it should show a warning message.
+vim.keymap.set('n', '<leader>tk', function()
+  local buf = vim.api.nvim_get_current_buf()
+  if not vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' and not vim.api.nvim_buf_get_option(buf, 'filetype') == 'toggleterm' then
+    vim.notify('Current buffer is not a terminal', vim.log.levels.WARN)
     return
   end
-  local top = stack[#stack].term
-  if is_term_visible(top) then
-    -- hide all floats when toggling off
-    hide_all_floats()
-  else
-    pcall(function() top:toggle() end)
-  end
-end
+  vim.api.nvim_buf_delete(buf, { force = true })
+end, { desc = 'Kill current terminal buffer' })
 
-local function add_new_tn()
-  local stack = _G._toggleterm_float_stack
-  if #stack > 0 and is_term_visible(stack[#stack].term) then
-    pcall(function() stack[#stack].term:toggle() end)
-  end
-  local t, id, err = _create_float_terminal()
-  if not t then
-    if err == 'no_toggleterm' then
-      vim.cmd 'botright split'
-      vim.cmd 'terminal'
-    end
-    return
-  end
-  table.insert(stack, { id = id, term = t })
-  t:toggle()
-end
-
-vim.keymap.set('n', '<leader>tt', toggle_tt, { desc = 'Toggle floating terminal (show/hide top)' })
-vim.keymap.set('n', '<leader>tn', add_new_tn, { desc = '[T]erminal [N]ew (share float space)' })
-
--- Reopen any *running* terminal buffers that were closed (hidden) previously.
-vim.api.nvim_create_user_command('TermRestore', function()
-  local restored = 0
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' then
-      local ok, job_id = pcall(vim.api.nvim_buf_get_var, buf, 'terminal_job_id')
-      if ok and type(job_id) == 'number' then
-        local ok_wait, res = pcall(vim.fn.jobwait, { job_id }, 0)
-        if ok_wait and type(res) == 'table' and res[1] == -1 then
-          vim.cmd 'botright split'
-          vim.api.nvim_set_current_buf(buf)
-          restored = restored + 1
-        end
-      end
-    end
-  end
-  if restored == 0 then vim.notify('No running terminal buffers to restore', vim.log.levels.INFO) end
-end, { desc = 'Reopen running terminal buffers' })
-
-vim.keymap.set('n', '<leader>tr', '<cmd>TermRestore<CR>', { desc = '[T]erminal [R]estore' })
-
--- Kill the current terminal job + wipe the terminal buffer.
-vim.api.nvim_create_user_command('TermKill', function()
-  if vim.bo.buftype ~= 'terminal' then
-    vim.notify('Not a terminal buffer', vim.log.levels.WARN)
-    return
-  end
-  local bufnr = vim.api.nvim_get_current_buf()
-  local ok, job_id = pcall(vim.api.nvim_buf_get_var, bufnr, 'terminal_job_id')
-  if ok and type(job_id) == 'number' and job_id > 0 then pcall(vim.fn.jobstop, job_id) end
-
-  -- Clean up tracked toggleterm instances if available
-  if type(_G) == 'table' and _G._toggleterm_terminals then
-    for k, t in pairs(_G._toggleterm_terminals) do
-      if t and t.bufnr == bufnr then
-        pcall(function() if type(t.close) == 'function' then t:close() elseif type(t.toggle) == 'function' then t:toggle() end end)
-        _G._toggleterm_terminals[k] = nil
-      end
-    end
-  end
-
-  -- Remove from float stack
-  if type(_G) == 'table' and _G._toggleterm_float_stack then
-    for i = #_G._toggleterm_float_stack, 1, -1 do
-      local entry = _G._toggleterm_float_stack[i]
-      if entry and entry.term and entry.term.bufnr == bufnr then
-        table.remove(_G._toggleterm_float_stack, i)
-      end
-    end
-  end
-
-  pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
-end, { desc = 'Stop terminal job and wipe buffer' })
-
-vim.keymap.set('n', '<leader>tk', '<cmd>TermKill<CR>', { desc = '[T]erminal [K]ill' })
-
--- TIP: Disable arrow keys in normal mode
+-- ==========================================================
+-- Arrow Key Disabling (Keep these below the terminal logic)
+-- ==========================================================
 vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
 vim.keymap.set('n', '<right>', '<cmd>echo "Use l to move!!"<CR>')
 vim.keymap.set('n', '<up>', '<cmd>echo "Use k to move!!"<CR>')
-vim.keymap.set('n', '<down>', '<cmd>echo "Use j to move!!"<CR>')
-
--- Keybinds to make split navigation easier.
+vim.keymap.set('n', '<down>', '<cmd>echo "Use j to move!!"<CR>') -- Keybinds to make split navigation easier.
 --  Use CTRL+<hjkl> to switch between windows
 --
 --  See `:help wincmd` for a list of all window commands
