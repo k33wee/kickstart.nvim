@@ -367,7 +367,7 @@ vim.keymap.set('n', '<leader>cm', function()
       end
 
       local full_prompt = table.concat({ prompt, '', 'Staged diff:', staged_diff }, '\n')
-      vim.system({ 'copilot', '--model', 'gpt-5-mini', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
+      vim.system({ 'copilot', '--model', 'gpt-4.1', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
         vim.schedule(function()
           commit_message_generation_in_progress = false
           if result.code ~= 0 then
