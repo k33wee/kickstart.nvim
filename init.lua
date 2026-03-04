@@ -129,6 +129,9 @@ vim.o.smartcase = true
 -- Keep signcolumn on by default
 vim.o.signcolumn = 'yes'
 
+-- Auto-reload files when they change externally
+vim.o.autoread = true
+
 -- Decrease update time
 vim.o.updatetime = 250
 
@@ -476,6 +479,13 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function() vim.hl.on_yank() end,
+})
+
+-- Auto-reload files when they change externally
+vim.api.nvim_create_autocmd({ 'FocusGained', 'BufEnter', 'CursorHold', 'CursorHoldI' }, {
+  pattern = '*',
+  group = vim.api.nvim_create_augroup('kickstart-autoread', { clear = true }),
+  command = "if mode() != 'c' | checktime | endif",
 })
 
 -- [[ Install `lazy.nvim` plugin manager ]]
