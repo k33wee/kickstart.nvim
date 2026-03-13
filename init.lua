@@ -204,6 +204,31 @@ vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' }
 local copilot_term_buf = nil
 local copilot_term = nil
 
+local function hide_other_terminal_windows(except_buf)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if buf ~= except_buf then
+      local is_terminal = vim.bo[buf].filetype == 'toggleterm' or vim.bo[buf].buftype == 'terminal'
+      if is_terminal then vim.api.nvim_win_close(win, true) end
+    end
+  end
+end
+
+local function place_copilot_terminal_right()
+  if not copilot_term_buf or not vim.api.nvim_buf_is_valid(copilot_term_buf) then return end
+  local win = vim.fn.bufwinid(copilot_term_buf)
+  if win == -1 then return end
+  vim.api.nvim_set_current_win(win)
+  vim.cmd 'wincmd L'
+  vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.4))
+end
+
+local function hide_copilot_terminal_if_visible()
+  if not copilot_term_buf or not vim.api.nvim_buf_is_valid(copilot_term_buf) then return end
+  local win = vim.fn.bufwinid(copilot_term_buf)
+  if win ~= -1 then vim.api.nvim_win_close(win, true) end
+end
+
 local function ensure_copilot_term()
   -- Prefer toggleterm if available
   local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
@@ -222,9 +247,9 @@ local function ensure_copilot_term()
     -- Create a new toggleterm Terminal for the copilot CLI
     copilot_term = Terminal:new {
       cmd = 'copilot',
+      direction = 'vertical',
       hidden = true,
       close_on_exit = false,
-      -- Use toggleterm's configured direction (do not override)
       on_open = function(term) copilot_term_buf = term.bufnr end,
     }
 
@@ -250,7 +275,7 @@ local function ensure_copilot_term()
   end
 
   vim.cmd 'botright vsplit'
-  vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.3))
+  vim.api.nvim_win_set_width(0, math.floor(vim.o.columns * 0.4))
   vim.cmd 'terminal copilot'
   copilot_term_buf = vim.api.nvim_get_current_buf()
   return true
@@ -281,7 +306,15 @@ end
 vim.keymap.set('n', '<leader>cp', function()
   -- If toggleterm Terminal instance exists, use it to toggle the terminal
   if copilot_term and copilot_term.toggle then
+    local was_visible = copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) and vim.fn.bufwinid(copilot_term.bufnr) ~= -1
     copilot_term:toggle()
+    if not was_visible and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
+      local win = vim.fn.bufwinid(copilot_term.bufnr)
+      if win ~= -1 then
+        hide_other_terminal_windows(copilot_term.bufnr)
+        place_copilot_terminal_right()
+      end
+    end
     return
   end
 
@@ -297,9 +330,12 @@ vim.keymap.set('n', '<leader>cp', function()
   if not ensure_copilot_term() then return end
 
   -- If using toggleterm, focus the terminal window
-  if copilot_term and copilot_term.bufnr and vim.api.nvim_buf_is_valid(copilot_term.bufnr) then
-    local win = vim.fn.bufwinid(copilot_term.bufnr)
-    if win ~= -1 then vim.api.nvim_set_current_win(win) end
+  if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
+    local win = vim.fn.bufwinid(copilot_term_buf)
+    if win ~= -1 then
+      hide_other_terminal_windows(copilot_term_buf)
+      place_copilot_terminal_right()
+    end
   end
 end, { desc = 'Copilot CLI toggle' })
 
@@ -315,6 +351,14 @@ vim.keymap.set('x', '<leader>cp', function()
     return
   end
   if not ensure_copilot_term() then return end
+
+  if copilot_term_buf and vim.api.nvim_buf_is_valid(copilot_term_buf) then
+    local win = vim.fn.bufwinid(copilot_term_buf)
+    if win ~= -1 then
+      hide_other_terminal_windows(copilot_term_buf)
+      place_copilot_terminal_right()
+    end
+  end
 
   local buf = copilot_term_buf
   if not buf or not vim.api.nvim_buf_is_valid(buf) then
@@ -396,29 +440,52 @@ end, { desc = 'Copilot [C]ommit [M]essage to clipboard' })
 -- ==========================================================
 -- Lazy-Loaded ToggleTerm Mappings
 -- ==========================================================
+local managed_toggle_terms = {}
 
--- <leader>tt: Toggles the single floating terminal
+local function compact_managed_terms()
+  local kept = {}
+  for _, term in ipairs(managed_toggle_terms) do
+    if term and term.toggle and (not term.bufnr or vim.api.nvim_buf_is_valid(term.bufnr)) then table.insert(kept, term) end
+  end
+  managed_toggle_terms = kept
+  return managed_toggle_terms
+end
+
+-- <leader>tt: toggles existing terminals only (does not create new ones)
 vim.keymap.set('n', '<leader>tt', function()
-  local ok, terminal_mod = pcall(require, 'toggleterm.terminal')
+  local ok = pcall(require, 'toggleterm.terminal')
   if not ok then
     vim.notify('ToggleTerm not found. Run :Lazy to check installation.', vim.log.levels.WARN)
     return
   end
 
-  if not _G.my_float_term then
-    _G.my_float_term = terminal_mod.Terminal:new {
-      direction = 'float',
-      float_opts = { border = 'curved' },
-      hidden = true,
-      on_open = function(term)
-        vim.cmd 'startinsert!'
-        -- Close the float easily by pressing 'q' in normal mode
-        vim.api.nvim_buf_set_keymap(term.bufnr, 'n', 'q', '<cmd>close<CR>', { noremap = true, silent = true })
-      end,
-    }
+  hide_copilot_terminal_if_visible()
+
+  local terms = compact_managed_terms()
+  if #terms == 0 then return end
+
+  local has_visible = false
+  for _, term in ipairs(terms) do
+    if term.bufnr and vim.api.nvim_buf_is_valid(term.bufnr) and vim.fn.bufwinid(term.bufnr) ~= -1 then
+      has_visible = true
+      break
+    end
   end
-  _G.my_float_term:toggle()
-end, { desc = 'Toggle floating terminal' })
+
+  if has_visible then
+    for _, term in ipairs(terms) do
+      if term.bufnr and vim.api.nvim_buf_is_valid(term.bufnr) then
+        local win = vim.fn.bufwinid(term.bufnr)
+        if win ~= -1 then vim.api.nvim_win_close(win, true) end
+      end
+    end
+    return
+  end
+
+  for _, term in ipairs(terms) do
+    term:toggle()
+  end
+end, { desc = 'Toggle existing terminals' })
 
 -- <leader>tn: opens a new terminal in a horizontal split, check if there are other opened terminals and create a new one without replacing the existing one, if pressed again split again and open another terminal, and so on.
 vim.keymap.set('n', '<leader>tn', function()
@@ -428,12 +495,15 @@ vim.keymap.set('n', '<leader>tn', function()
     return
   end
 
+  hide_copilot_terminal_if_visible()
+
   local Terminal = terminal_mod.Terminal
   local new_term = Terminal:new {
     direction = 'horizontal',
     hidden = true,
     on_open = function(term) vim.cmd 'startinsert!' end,
   }
+  table.insert(managed_toggle_terms, new_term)
   new_term:toggle()
 end, { desc = 'Open new horizontal terminal' })
 
