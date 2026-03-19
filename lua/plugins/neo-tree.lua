@@ -1,3 +1,5 @@
+local media = require 'config.media'
+
 return {
   {
     'nvim-neo-tree/neo-tree.nvim',
@@ -13,9 +15,13 @@ return {
       { '\\', '<cmd>Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
     },
     opts = {
+      commands = {
+        open_with_system_app = function(state) media.open_neotree_node(state) end,
+      },
       window = {
         mappings = {
           ['<space>'] = 'none',
+          ['O'] = 'open_with_system_app',
         },
       },
       filesystem = {
@@ -23,11 +29,22 @@ return {
         window = {
           mappings = {
             ['\\'] = 'close_window',
+            ['O'] = 'open_with_system_app',
           },
         },
       },
     },
     init = function()
+      vim.api.nvim_create_user_command('OpenWithSystemApp', function(opts)
+        media.open(opts.args ~= '' and opts.args or nil)
+      end, {
+        nargs = '?',
+        complete = 'file',
+        desc = 'Open a file with the system default application',
+      })
+
+      vim.keymap.set('n', '<leader>mO', media.open, { desc = '[M]edia [O]pen with system app' })
+
       vim.api.nvim_create_autocmd('VimEnter', {
         desc = 'Open Neo-tree when opening a directory',
         group = vim.api.nvim_create_augroup('neotree-auto-open', { clear = true }),
