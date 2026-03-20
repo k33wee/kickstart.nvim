@@ -90,6 +90,12 @@ P.S. You can delete this when you're done too. It's your config now! :)
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
+-- Ensure treesitter install directory is in runtimepath
+local data_site = vim.fn.stdpath('data') .. '/site'
+if not string.find(vim.o.runtimepath, data_site, 1, true) then
+  vim.opt.rtp:append(data_site)
+end
+
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
 
