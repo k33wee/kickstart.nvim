@@ -7,7 +7,7 @@ local prompt = table.concat({
   'Read the staged diff below carefully and rely on its exact content.',
   '1. Determine the best conventional type (feat, fix, docs, style, refactor, perf, test, build, chore).',
   '2. Write a single subject line in the format "<type>: <summary>" that accurately reflects the actual file changes and behaviors.',
-  '3. After the subject, add a blank line and describe two or three key diff highlights as "- <change>", referencing file paths or sections exactly as they appear.',
+  '3. After the subject, add a blank line and describe one or two key diff highlights as "- <change>", referencing sections exactly as they appear. Talk about logical changes, do not specific line numbers or file paths.',
   '4. Output only the formatted commit subject and bullet list; do not invent unrelated changes.',
 }, '\n')
 

@@ -53,7 +53,7 @@ local function ensure_copilot_term()
     end
 
     copilot_term = Terminal:new {
-      cmd = 'copilot',
+      cmd = 'copilot --model gpt-4.1 --agent beast-mode',
       direction = 'vertical',
       hidden = true,
       close_on_exit = false,
