@@ -1,14 +1,17 @@
 local M = {}
 
 function M.get_visual_line_range()
-  local start_pos = vim.fn.getpos "'<"
-  local end_pos = vim.fn.getpos "'>"
-  local start_row = start_pos[2]
-  local end_row = end_pos[2]
+  local mode = vim.fn.mode()
+  local start_row, end_row
 
-  if start_row == 0 or end_row == 0 then
+  if mode == 'v' or mode == 'V' or mode == '\22' then
     start_row = vim.fn.line 'v'
     end_row = vim.fn.line '.'
+  else
+    local start_pos = vim.fn.getpos "'<"
+    local end_pos = vim.fn.getpos "'>"
+    start_row = start_pos[2]
+    end_row = end_pos[2]
   end
 
   if start_row == 0 or end_row == 0 then return nil, nil end
@@ -40,7 +43,7 @@ function M.get_visual_reference()
     return nil
   end
 
-  return reference
+  return reference .. ' '
 end
 
 function M.leave_visual_mode()

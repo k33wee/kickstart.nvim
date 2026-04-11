@@ -14,7 +14,7 @@ end
 local function schedule_compact_managed_terms() vim.schedule(compact_managed_terms) end
 
 function M.setup()
-  local copilot = require 'config.copilot'
+  local opencode = require 'config.opencode'
 
   vim.keymap.set('n', '<leader>tt', function()
     local ok = pcall(require, 'toggleterm.terminal')
@@ -23,7 +23,7 @@ function M.setup()
       return
     end
 
-    copilot.hide_terminal_if_visible()
+    opencode.hide_terminal_if_visible()
 
     local terms = compact_managed_terms()
     if #terms == 0 then return end
@@ -59,7 +59,7 @@ function M.setup()
       return
     end
 
-    copilot.hide_terminal_if_visible()
+    opencode.hide_terminal_if_visible()
 
     local Terminal = terminal_mod.Terminal
     local new_term = Terminal:new {

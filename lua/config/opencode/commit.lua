@@ -12,8 +12,8 @@ local prompt = table.concat({
 }, '\n')
 
 function M.generate()
-  if vim.fn.executable 'copilot' ~= 1 then
-    vim.notify('copilot CLI not found in $PATH', vim.log.levels.ERROR)
+  if vim.fn.executable 'opencode' ~= 1 then
+    vim.notify('opencode CLI not found in $PATH', vim.log.levels.ERROR)
     return
   end
 
@@ -23,7 +23,7 @@ function M.generate()
   end
 
   commit_message_generation_in_progress = true
-  vim.notify('Generating commit message with Copilot CLI...', vim.log.levels.INFO)
+  vim.notify('Generating commit message with OpenCode CLI...', vim.log.levels.INFO)
 
   vim.system({ 'git', 'diff', '--staged', '--no-color', '--no-ext-diff' }, { text = true }, function(diff_result)
     vim.schedule(function()
@@ -41,17 +41,17 @@ function M.generate()
       end
 
       local full_prompt = table.concat({ prompt, '', 'Staged diff:', staged_diff }, '\n')
-      vim.system({ 'copilot', '--model', 'gpt-4.1', '-p', full_prompt, '--silent', '--allow-all' }, { text = true }, function(result)
+      vim.system({ 'opencode', 'run', full_prompt, '--model', 'github-copilot/gpt-4.1' }, { text = true }, function(result)
         vim.schedule(function()
           commit_message_generation_in_progress = false
           if result.code ~= 0 then
-            vim.notify('Failed to generate commit message with Copilot CLI', vim.log.levels.ERROR)
+            vim.notify('Failed to generate commit message with OpenCode CLI', vim.log.levels.ERROR)
             return
           end
 
           local message = vim.trim(result.stdout or '')
           if message == '' then
-            vim.notify('Copilot CLI returned an empty commit message', vim.log.levels.WARN)
+            vim.notify('OpenCode CLI returned an empty commit message', vim.log.levels.WARN)
             return
           end
 

@@ -6,7 +6,7 @@ vim.g.loaded_netrwPlugin = 1
 
 require('config.options').setup()
 require('config.keymaps').setup()
-require('config.copilot').setup()
+require('config.opencode').setup()
 require('config.terminals').setup()
 require('config.autocmds').setup()
 require('config.lazy').setup()

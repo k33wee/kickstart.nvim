@@ -1,11 +1,11 @@
 local M = {}
 
-local function external_copilot_session_name()
+local function external_opencode_session_name()
   local cwd = vim.fn.getcwd()
   local digest = vim.fn.sha256(cwd):sub(1, 12)
   local tail = vim.fn.fnamemodify(cwd, ':t'):gsub('[^%w]+', '-')
   if tail == '' then tail = 'root' end
-  return string.format('copilot-%s-%s', tail, digest), cwd
+  return string.format('opencode-%s-%s', tail, digest), cwd
 end
 
 local function tmux_session_exists(session_name)
@@ -13,24 +13,24 @@ local function tmux_session_exists(session_name)
   return vim.v.shell_error == 0
 end
 
-local function ensure_external_copilot_session()
+local function ensure_external_opencode_session()
   if vim.fn.executable 'tmux' ~= 1 then
-    vim.notify('tmux is required for the external Copilot workflow', vim.log.levels.ERROR)
+    vim.notify('tmux is required for the external OpenCode workflow', vim.log.levels.ERROR)
     return nil, nil, nil
   end
 
-  if vim.fn.executable 'copilot' ~= 1 then
-    vim.notify('copilot CLI not found in $PATH', vim.log.levels.ERROR)
+  if vim.fn.executable 'opencode' ~= 1 then
+    vim.notify('opencode CLI not found in $PATH', vim.log.levels.ERROR)
     return nil, nil, nil
   end
 
-  local session_name, cwd = external_copilot_session_name()
+  local session_name, cwd = external_opencode_session_name()
   if tmux_session_exists(session_name) then return session_name, cwd, false end
 
-  local command = { 'tmux', 'new-session', '-d', '-s', session_name, '-c', cwd, 'copilot', '--model', 'gpt-4.1', '--agent', 'beast-mode' }
+  local command = { 'tmux', 'new-session', '-d', '-s', session_name, '-c', cwd, 'opencode', '--model', 'github-copilot/gpt-4.1', '--agent', 'beast-mode' }
   local job_id = vim.fn.jobstart(command, { cwd = cwd, detach = true })
   if job_id <= 0 then
-    vim.notify('Failed to start external Copilot session', vim.log.levels.ERROR)
+    vim.notify('Failed to start external OpenCode session', vim.log.levels.ERROR)
     return nil, nil, nil
   end
 
@@ -45,7 +45,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'cosmic-term',
       build = function(args)
-        local cmd = { 'cosmic-term', '--title', 'Copilot CLI', '--working-directory', cwd, '--command' }
+        local cmd = { 'cosmic-term', '--title', 'OpenCode CLI', '--working-directory', cwd, '--command' }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -53,7 +53,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'kitty',
       build = function(args)
-        local cmd = { 'kitty', '--title', 'Copilot CLI', '--directory', cwd }
+        local cmd = { 'kitty', '--title', 'OpenCode CLI', '--directory', cwd }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -69,7 +69,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'alacritty',
       build = function(args)
-        local cmd = { 'alacritty', '--title', 'Copilot CLI', '--working-directory', cwd, '-e' }
+        local cmd = { 'alacritty', '--title', 'OpenCode CLI', '--working-directory', cwd, '-e' }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -77,7 +77,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'ghostty',
       build = function(args)
-        local cmd = { 'ghostty', '--title=Copilot CLI', '--working-directory=' .. cwd, '-e' }
+        local cmd = { 'ghostty', '--title=OpenCode CLI', '--working-directory=' .. cwd, '-e' }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -85,7 +85,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'foot',
       build = function(args)
-        local cmd = { 'foot', '--title', 'Copilot CLI', '--working-directory', cwd }
+        local cmd = { 'foot', '--title', 'OpenCode CLI', '--working-directory', cwd }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -93,7 +93,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'gnome-terminal',
       build = function(args)
-        local cmd = { 'gnome-terminal', '--title=Copilot CLI', '--working-directory=' .. cwd, '--' }
+        local cmd = { 'gnome-terminal', '--title=OpenCode CLI', '--working-directory=' .. cwd, '--' }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -101,7 +101,7 @@ local function build_external_terminal_command(command_args, cwd)
     {
       executable = 'konsole',
       build = function(args)
-        local cmd = { 'konsole', '--workdir', cwd, '-p', 'tabtitle=Copilot CLI', '-e' }
+        local cmd = { 'konsole', '--workdir', cwd, '-p', 'tabtitle=OpenCode CLI', '-e' }
         vim.list_extend(cmd, args)
         return cmd
       end,
@@ -112,7 +112,7 @@ local function build_external_terminal_command(command_args, cwd)
         local cmd = {
           'xterm',
           '-title',
-          'Copilot CLI',
+          'OpenCode CLI',
           '-bg',
           '#11111b',
           '-fg',
@@ -129,12 +129,12 @@ local function build_external_terminal_command(command_args, cwd)
     },
   }
 
-  local configured_terminal = vim.g.copilot_external_terminal
+  local configured_terminal = vim.g.opencode_external_terminal
   if type(configured_terminal) == 'string' and configured_terminal ~= '' then
     for _, launcher in ipairs(launchers) do
       if launcher.executable == configured_terminal then return launcher.build(command_args), cwd end
     end
-    vim.notify(string.format('Unsupported copilot external terminal: %s', configured_terminal), vim.log.levels.ERROR)
+    vim.notify(string.format('Unsupported opencode external terminal: %s', configured_terminal), vim.log.levels.ERROR)
     return nil, nil
   end
 
@@ -169,17 +169,17 @@ local function open_macos_tmux_viewer(session_name, cwd)
 
   local job_id = vim.fn.jobstart(command, { cwd = cwd, detach = true })
   if job_id <= 0 then
-    vim.notify('Failed to open Terminal.app for Copilot', vim.log.levels.ERROR)
+    vim.notify('Failed to open Terminal.app for OpenCode', vim.log.levels.ERROR)
     return false
   end
 
   return true
 end
 
-local function type_in_external_copilot_session(session_name, input)
+local function type_in_external_opencode_session(session_name, input)
   local job_id = vim.fn.jobstart({ 'tmux', 'send-keys', '-t', session_name, '-l', input }, { detach = true })
   if job_id <= 0 then
-    vim.notify('Failed to send text to external Copilot session', vim.log.levels.ERROR)
+    vim.notify('Failed to send text to external OpenCode session', vim.log.levels.ERROR)
     return false
   end
 
@@ -188,7 +188,7 @@ end
 
 function M.open(opts)
   opts = opts or {}
-  local session_name, cwd, created = ensure_external_copilot_session()
+  local session_name, cwd, created = ensure_external_opencode_session()
   if not session_name then return end
 
   local should_open_viewer = created or opts.open_existing ~= false
@@ -201,7 +201,7 @@ function M.open(opts)
       local command, launch_cwd = build_external_terminal_command({ 'tmux', 'attach-session', '-t', session_name }, cwd)
       if not command then
         vim.notify(
-          'No supported external terminal found. Set vim.g.copilot_external_terminal to one of: cosmic-term, kitty, wezterm, alacritty, ghostty, foot, gnome-terminal, konsole, xterm',
+          'No supported external terminal found. Set vim.g.opencode_external_terminal to one of: cosmic-term, kitty, wezterm, alacritty, ghostty, foot, gnome-terminal, konsole, xterm',
           vim.log.levels.ERROR
         )
         return
@@ -209,24 +209,24 @@ function M.open(opts)
 
       local job_id = vim.fn.jobstart(command, { cwd = launch_cwd, detach = true })
       if job_id <= 0 then
-        vim.notify('Failed to open an external terminal for Copilot', vim.log.levels.ERROR)
+        vim.notify('Failed to open an external terminal for OpenCode', vim.log.levels.ERROR)
         return
       end
     end
   end
 
   if opts.initial_prompt and opts.initial_prompt ~= '' then
-    vim.defer_fn(function() type_in_external_copilot_session(session_name, opts.initial_prompt) end, created and 800 or 120)
-    vim.notify('Inserted Copilot range reference into the external session', vim.log.levels.INFO)
+    vim.defer_fn(function() type_in_external_opencode_session(session_name, opts.initial_prompt) end, created and 800 or 120)
+    vim.notify('Inserted OpenCode range reference into the external session', vim.log.levels.INFO)
     return
   end
 
   if created then
-    vim.notify('Opened a new external Copilot session', vim.log.levels.INFO)
+    vim.notify('Opened a new external OpenCode session', vim.log.levels.INFO)
     return
   end
 
-  vim.notify('Opened the existing external Copilot session', vim.log.levels.INFO)
+  vim.notify('Opened the existing external OpenCode session', vim.log.levels.INFO)
 end
 
 return M
